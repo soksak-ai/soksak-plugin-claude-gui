@@ -6,7 +6,7 @@
   "repo": "https://github.com/soksak-ai/soksak-plugin-claude-gui.git",
   "description": "터미널에서 claude(Claude Code CLI)가 실행되면 패널 상태바에 GUI 항목이 뜨고, 누르면 대화를 버블 UI로 보여주는 오버레이가 열린다. 활성 세션과 서브에이전트를 실시간 표시.",
   "entry": "main.js",
-  "permissions": ["ui:statusbar", "ui:overlay:pane", "commands", "terminal", "terminal:read", "terminal:write", "fs:read"],
+  "permissions": ["ui", "ui:statusbar", "ui:overlay:pane", "commands", "terminal", "terminal:read", "terminal:write", "fs:read"],
   "contributes": {
     "commands": [
       { "name": "toggle", "title": { "en": "Toggle Claude GUI", "ko": "Claude GUI 켜기/끄기" } },
@@ -17,6 +17,15 @@
       { "name": "type", "title": { "en": "Type into GUI input box + Enter", "ko": "GUI 입력창에 입력+Enter" } },
       { "name": "queue", "title": { "en": "Get input queue snapshot", "ko": "입력 큐 스냅샷 조회" } },
       { "name": "state", "title": { "en": "Get overlay render state (e2e)", "ko": "오버레이 렌더 상태 조회(e2e)" } }
+    ],
+    "nodes": [
+      { "id": "input", "description": { "ko": "claude 입력창", "en": "claude input box" } },
+      { "id": "send", "description": { "ko": "입력 전송 버튼", "en": "send button" } },
+      { "id": "close", "description": { "ko": "오버레이 닫기 버튼", "en": "close overlay button" } },
+      { "id": "verbose", "description": { "ko": "thinking 표시/숨김 토글", "en": "thinking verbose toggle" } },
+      { "id": "session", "description": { "ko": "세션 id 칩(클릭 복사)", "en": "session id chip (click to copy)" } },
+      { "id": "msg", "description": { "ko": "사용자 메시지 행(안정키=메시지 uuid)", "en": "user message row (key = message uuid)" } },
+      { "id": "agent", "description": { "ko": "서브에이전트 패널 헤더(안정키=agent id)", "en": "subagent panel header (key = agent id)" } }
     ]
   }
 }

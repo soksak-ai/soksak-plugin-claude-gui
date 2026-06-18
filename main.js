@@ -523,6 +523,31 @@ export default {
       return e;
     };
 
+    // ── DOM 구조적 주소 노출 ─────────────────────────────────────────────────────
+    // 외부(주소 클릭/측정·E2E)에 노출할 요소에 data-node 부여. 노출 종류는 plugin.json
+    // contributes.nodes 로 선언(동의 화면 자동 표기). 단일 요소 = "<id>", 동적 목록 =
+    // "<id>/<안정키>". 안정키는 항목의 안정 식별자(메시지 uuid·에이전트 id) — 카운터 금지.
+    // path 세그먼트 규칙: ^[a-z0-9][a-z0-9.-]*$, "/" 계층. 형식 위반 키는 정제(소문자화 등),
+    // 정제 후에도 비면 노드 미부여(가짜 키 금지 — 침묵 실패 아님, 그냥 노출 안 됨).
+    const nodeKey = (raw) => {
+      const k = String(raw == null ? "" : raw)
+        .toLowerCase()
+        .replace(/[^a-z0-9.-]+/g, "-") // 허용 외 문자 → "-"
+        .replace(/^-+|-+$/g, ""); // 양끝 "-" 제거(세그먼트 시작은 [a-z0-9])
+      return /^[a-z0-9][a-z0-9.-]*$/.test(k) ? k : "";
+    };
+    // 단일 노드: el.dataset.node = id. 동적 노드: setNode(el, base, key)(키 정제·검증).
+    const setNode = (e, base, key) => {
+      if (!e) return e;
+      if (key === undefined) {
+        e.dataset.node = base;
+        return e;
+      }
+      const k = nodeKey(key);
+      if (k) e.dataset.node = base + "/" + k; // 안정키 없으면 미부여(가짜 인덱스 금지)
+      return e;
+    };
+
     // 클립보드 복사(보안 컨텍스트면 clipboard API, 아니면 execCommand 폴백).
     function copyText(t) {
       try {
@@ -700,6 +725,7 @@ export default {
       const sMode = el("span", "cg-chip");
       const sBranch = el("span", "cg-chip");
       const sSession = el("span", "cg-chip cg-dim cg-session");
+      sSession.dataset.node = "session"; // 클릭 = 세션 id 복사
       sSession.style.cursor = "pointer";
       // hover = 전체 id(title), 클릭 = 복사(피드백). 전체 id 는 dataset.full 에 보관.
       sSession.addEventListener("click", () => {
@@ -714,6 +740,7 @@ export default {
       });
       // verbose 토글(cc2 ctrl+o 대응) — thinking 표시/숨김. 기본 off(숨김).
       const vbtn = el("button", "cg-vbtn", "∴");
+      vbtn.dataset.node = "verbose"; // 클릭 = thinking 표시/숨김 토글
       vbtn.type = "button";
       vbtn.title = "thinking 표시/숨김 (verbose)";
       vbtn.addEventListener("click", () => {
@@ -722,6 +749,7 @@ export default {
         vbtn.classList.toggle("active", ov.classList.toggle("cg-verbose"));
       });
       const closeBtn = el("button", "cg-x", "✕");
+      closeBtn.dataset.node = "close"; // 클릭 = 오버레이 닫기
       closeBtn.type = "button";
       closeBtn.title = "닫기";
       closeBtn.addEventListener("click", onClose);
@@ -743,12 +771,14 @@ export default {
       const queueBox = el("div", "cg-queue"); // 대기 항목 — L3(실제 입력) 확정 시 사라진다
       const row = el("div", "cg-inputrow");
       const ta = el("textarea", "cg-input");
+      ta.dataset.node = "input"; // claude 입력창(focus/type 명령의 DOM 타깃)
       ta.rows = 1;
       ta.placeholder = canWrite
         ? "claude 에게 입력…  (Enter 전송, Shift+Enter 줄바꿈)"
         : '입력 전송 권한 없음 — "terminal:write" 재동의 필요';
       ta.disabled = !canWrite;
       const btn = el("button", "cg-send", "↩");
+      btn.dataset.node = "send"; // 클릭 = 입력 전송
       btn.type = "button";
       btn.title = "전송";
       btn.disabled = !canWrite;
@@ -939,6 +969,9 @@ export default {
     function renderUser(conv, entry) {
       const m = entry.message || {};
       const c = m.content;
+      // 메시지 행 안정키 = entry.uuid(JSONL 의 안정 식별자). 한 user 엔트리 = 한 버블이라
+      // 1:1 매핑(uuid 정제 후 노드 부여). uuid 없으면 노드 미부여(가짜 인덱스 금지).
+      const uid = entry.uuid;
       // tool_result 를 품은 user 는 도구 결과 → 해당 tool_use 아래 분기로.
       if (Array.isArray(c)) {
         let appended = false;
@@ -947,10 +980,10 @@ export default {
             attachResult(conv, b);
             appended = true;
           } else if (b && b.type === "text" && b.text.trim()) {
-            appendRow(conv, userBubble(b.text));
+            appendRow(conv, userBubble(b.text, uid));
             appended = true;
           } else if (b && b.type === "image") {
-            appendRow(conv, userBubble("🖼 (이미지)"));
+            appendRow(conv, userBubble("🖼 (이미지)", uid));
             appended = true;
           }
         }
@@ -958,11 +991,11 @@ export default {
       }
       if (typeof c === "string" && c.trim() && !entry.isMeta) {
         // 명령/시스템 주입(<command-*>, <local-command>...)은 접어서 dim 으로.
-        appendRow(conv, userBubble(c));
+        appendRow(conv, userBubble(c, uid));
       }
     }
 
-    function userBubble(text) {
+    function userBubble(text, uid) {
       // 슬래시 명령(<command-*>)·명령 출력(<local-command-stdout>)은 raw 태그 대신 깔끔하게.
       const cmd = parseCommandTags(text);
       if (cmd) {
@@ -970,11 +1003,11 @@ export default {
           if (!cmd.text) return null; // 빈 출력은 버블 생성 안 함
           const r = el("div", "cg-row cg-user");
           r.appendChild(el("div", "cg-cmd-out cg-dim", cmd.text));
-          return r;
+          return setNode(r, "msg", uid);
         }
         const r = el("div", "cg-row cg-user");
         r.appendChild(el("div", "cg-cmd", cmd.name + (cmd.args ? " " + cmd.args : "")));
-        return r;
+        return setNode(r, "msg", uid);
       }
       const row = el("div", "cg-row cg-user");
       const body = el("div", "cg-user-body");
@@ -986,7 +1019,7 @@ export default {
         body.textContent = text;
       }
       row.appendChild(body);
-      return row;
+      return setNode(row, "msg", uid);
     }
 
     function renderAssistant(conv, entry) {
@@ -1301,6 +1334,7 @@ export default {
       const id = fileName.replace(/\.jsonl$/, "");
       const panel = el("div", "cg-row cg-subagent");
       const head = el("div", "cg-sub-head");
+      setNode(head, "agent", id); // 클릭 = 서브에이전트 패널 접기/펴기. 안정키 = agent 파일 id
       head.append(el("span", "cg-agent-dot", "🤖"));
       const title = el("span", null, id);
       const prog = el("span", "cg-agent-prog", "");
