@@ -281,7 +281,40 @@ export function parseCommandTags(text) {
 
 export default {
   activate(ctx) {
+    const app = ctx.app;
     const CLAUDE_RE = /(^|\s|\/)claude(\s|$)/;
+
+    // ── i18n ─────────────────────────────────────────────────────────────────
+    const I18N = {
+      "copied":             { en: "Copied ✓",                        ko: "복사됨 ✓" },
+      "session.copy.title": { en: "Session $1 · click to copy",      ko: "세션 $1 · 클릭하면 복사" },
+      "verbose.title":      { en: "Show/hide thinking (verbose)",     ko: "thinking 표시/숨김 (verbose)" },
+      "close.title":        { en: "Close",                            ko: "닫기" },
+      "send.title":         { en: "Send",                             ko: "전송" },
+      "input.placeholder":  { en: "Message claude…  (Enter to send, Shift+Enter for newline)", ko: "claude 에게 입력…  (Enter 전송, Shift+Enter 줄바꿈)" },
+      "input.no-perm":      { en: "No send permission — re-consent to \"terminal:write\"",     ko: "입력 전송 권한 없음 — \"terminal:write\" 재동의 필요" },
+      "q.sending":          { en: "⤴ Sending",                       ko: "⤴ 전송" },
+      "q.awaiting":         { en: "⏳ Awaiting input",               ko: "⏳ 입력 대기" },
+      "q.modal":            { en: "⧖ Waiting for dialog",            ko: "⧖ 다이얼로그 대기" },
+      "q.stuck":            { en: "⧖ Input held (check required)",   ko: "⧖ 입력 보류(확인 필요)" },
+      "q.waiting":          { en: "⧖ Queued ($1)",                   ko: "⧖ 순번 대기 ($1)" },
+      "pending":            { en: "Responding…",                      ko: "답변 중…" },
+      "diff.more":          { en: "  … +$1 lines",                   ko: "  … +$1 줄" },
+      "result.more":        { en: "… +$1 lines",                     ko: "… +$1 줄" },
+      "compact":            { en: "─── context compacted ───",       ko: "─── 컨텍스트 압축 ───" },
+      "empty.no-fs":        { en: "No core fs socket — re-consent to \"fs:read\".",            ko: "코어 fs 소켓 없음 — \"fs:read\" 권한을 재동의하세요." },
+      "empty.no-dir":       { en: "Project transcript directory not found.\n$1",               ko: "프로젝트 트랜스크립트 디렉토리를 찾지 못함.\n$1" },
+      "empty.session-wait": { en: "Session $1 — waiting for conversation…",                   ko: "현재 세션 $1 — 대화가 오가면 표시됩니다." },
+      "empty.no-session":   { en: "No claude session found — will appear when started.",       ko: "현재 claude 세션을 찾지 못함 — 대화가 시작되면 표시됩니다." },
+    };
+    const t = (k, ...args) => {
+      const s = I18N[k];
+      const l = app.locale ? app.locale() : "ko";
+      let str = s ? (s[l] ?? s.en ?? s.ko) : k;
+      args.forEach((v, i) => { str = str.replace("$" + (i + 1), v); });
+      return str;
+    };
+
     // 오버레이는 UI 폰트(터미널 monospace 가 아니라) — 패널에서 상속되는 폰트를 끊는다.
     const UI_FONT =
       '-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",system-ui,sans-serif';
@@ -666,7 +699,7 @@ export default {
       const p = panes.get(paneId);
       if (!p) return;
       p.item?.dispose(); // 이전 등록 해지(Disposable.dispose() — 함수 아님)
-      p.item = ctx.app.ui.statusBarItem({
+      p.item = app.ui.statusBarItem({
         id: paneId,
         paneId,
         label: "GUI",
@@ -733,7 +766,7 @@ export default {
         if (!full) return;
         copyText(full);
         const prev = sSession.textContent;
-        sSession.textContent = "복사됨 ✓";
+        sSession.textContent = t("copied");
         setTimeout(() => {
           sSession.textContent = prev;
         }, 900);
@@ -742,7 +775,7 @@ export default {
       const vbtn = el("button", "cg-vbtn", "∴");
       vbtn.dataset.node = "verbose"; // 클릭 = thinking 표시/숨김 토글
       vbtn.type = "button";
-      vbtn.title = "thinking 표시/숨김 (verbose)";
+      vbtn.title = t("verbose.title");
       vbtn.addEventListener("click", () => {
         const ov = vbtn.closest(".cg-overlay");
         if (!ov) return;
@@ -751,7 +784,7 @@ export default {
       const closeBtn = el("button", "cg-x", "✕");
       closeBtn.dataset.node = "close"; // 클릭 = 오버레이 닫기
       closeBtn.type = "button";
-      closeBtn.title = "닫기";
+      closeBtn.title = t("close.title");
       closeBtn.addEventListener("click", onClose);
       meta.append(sModel, sCtx, sMode, sBranch);
       // 타이틀("Claude GUI")·우측 cwd 경로는 표시 안 함(불필요 — 모델/ctx/세션만).
@@ -763,7 +796,7 @@ export default {
     // 하단 입력창(cc2 TUI 프롬프트 대응) — claude PTY 에 텍스트 전송. Enter 전송,
     // Shift+Enter 줄바꿈. "terminal:write" 권한 없으면 비활성 + 안내.
     function buildInput(paneId) {
-      const term = ctx.app.terminal;
+      const term = app.terminal;
       const canWrite = !!(term && term.sendText);
       // terminal:read 가 있으면 3계층 검증 큐(모달 게이트 + L2/L3), 없으면 레거시 즉시 주입.
       const canRead = !!(term && term.readBuffer && term.onOutput);
@@ -773,14 +806,12 @@ export default {
       const ta = el("textarea", "cg-input");
       ta.dataset.node = "input"; // claude 입력창(focus/type 명령의 DOM 타깃)
       ta.rows = 1;
-      ta.placeholder = canWrite
-        ? "claude 에게 입력…  (Enter 전송, Shift+Enter 줄바꿈)"
-        : '입력 전송 권한 없음 — "terminal:write" 재동의 필요';
+      ta.placeholder = canWrite ? t("input.placeholder") : t("input.no-perm");
       ta.disabled = !canWrite;
       const btn = el("button", "cg-send", "↩");
       btn.dataset.node = "send"; // 클릭 = 입력 전송
       btn.type = "button";
-      btn.title = "전송";
+      btn.title = t("send.title");
       btn.disabled = !canWrite;
 
       // 큐 로직은 createInputQueue(검증된 순수/주입형) — DOM 은 onRender 콜백에서만.
@@ -840,14 +871,14 @@ export default {
         const item = el("div", "cg-q-item cg-q-" + it.state);
         const badge =
           it.state === "injecting"
-            ? "⤴ 전송"
+            ? t("q.sending")
             : it.state === "awaiting"
-              ? "⏳ 입력 대기" // claude 큐에 들어감 — 실제 입력(L3) 전까지
+              ? t("q.awaiting") // claude 큐에 들어감 — 실제 입력(L3) 전까지
               : it.reason === "modal"
-                ? "⧖ 다이얼로그 대기" // 맨 앞: claude 에 다이얼로그가 떠 막힘
+                ? t("q.modal") // 맨 앞: claude 에 다이얼로그가 떠 막힘
                 : it.reason === "stuck"
-                  ? "⧖ 입력 보류(확인 필요)"
-                  : `⧖ 순번 대기 (${i + 1})`; // 뒤: 앞 항목 처리 후 차례
+                  ? t("q.stuck")
+                  : t("q.waiting", i + 1); // 뒤: 앞 항목 처리 후 차례
         item.append(el("span", "cg-q-state", badge), el("span", "cg-q-text", it.text));
         box.appendChild(item);
       });
@@ -866,7 +897,7 @@ export default {
     function showPendingIndicator(conv) {
       if (conv.pendingEl) return; // 이미 떠 있음 — 중복 금지
       const node = el("div", "cg-row cg-pending");
-      node.append(el("span", "cg-pending-dot", "⏺"), el("span", null, "답변 중…"));
+      node.append(el("span", "cg-pending-dot", "⏺"), el("span", null, t("pending")));
       appendRow(conv, node);
       conv.pendingEl = node;
     }
@@ -896,7 +927,7 @@ export default {
       h.sBranch.textContent = st.branch ? "⎇ " + st.branch : "";
       h.sBranch.style.display = st.branch ? "" : "none";
       h.sSession.textContent = st.session ? st.session.slice(0, 8) : "";
-      h.sSession.title = st.session ? `세션 ${st.session} · 클릭하면 복사` : "";
+      h.sSession.title = st.session ? t("session.copy.title", st.session) : "";
       h.sSession.dataset.full = st.session || "";
     }
 
@@ -1120,7 +1151,7 @@ export default {
         box.appendChild(el("span", "cg-diff-l cg-diff-" + ln.type, prefix + ln.text));
       }
       if (diff.length > MAX)
-        box.appendChild(el("span", "cg-diff-l cg-diff-ctx", `  … +${diff.length - MAX} 줄`));
+        box.appendChild(el("span", "cg-diff-l cg-diff-ctx", t("diff.more", diff.length - MAX)));
       return box;
     }
 
@@ -1151,7 +1182,7 @@ export default {
       const pre = el("pre", "cg-result-pre", shown);
       line.appendChild(pre);
       if (lines.length > MAX)
-        line.appendChild(el("div", "cg-dim cg-more", `… +${lines.length - MAX} 줄`));
+        line.appendChild(el("div", "cg-dim cg-more", t("result.more", lines.length - MAX)));
       if (ref) {
         ref.branch.appendChild(line);
         if (conv.atBottom) conv.bodyEl.scrollTop = conv.bodyEl.scrollHeight;
@@ -1168,7 +1199,7 @@ export default {
     function renderSystem(conv, entry) {
       const sub = entry.subtype || "";
       let txt = typeof entry.content === "string" ? entry.content : "";
-      if (sub === "compact_boundary") txt = "─── 컨텍스트 압축 ───";
+      if (sub === "compact_boundary") txt = t("compact");
       if (!txt) return;
       // 명령 출력(subtype local_command 등)은 <local-command-stdout> 태그로 옴 → 정리.
       // 빈 출력은 렌더 안 함, 출력/이름만 깔끔히.
@@ -1234,7 +1265,7 @@ export default {
 
     async function tail(conv) {
       try {
-        const r = await ctx.app.fs.readText(conv.path, conv.offset);
+        const r = await app.fs.readText(conv.path, conv.offset);
         if (r.totalBytes < conv.offset) {
           // 파일 축소/교체 → 처음부터 재독(드문 tombstone 재작성).
           conv.offset = 0;
@@ -1242,7 +1273,7 @@ export default {
           conv.bodyEl.replaceChildren();
           conv.seen.clear();
           conv.toolEls.clear();
-          const full = await ctx.app.fs.readText(conv.path, 0);
+          const full = await app.fs.readText(conv.path, 0);
           conv.offset = full.totalBytes;
           feed(conv, full.text);
           return;
@@ -1261,7 +1292,7 @@ export default {
       const subDir = `${conv.dir}/${conv.session}/subagents`;
       let listing;
       try {
-        listing = await ctx.app.fs.list(subDir, { meta: true });
+        listing = await app.fs.list(subDir, { meta: true });
       } catch {
         return; // 아직 없음(서브에이전트 미실행)
       }
@@ -1273,7 +1304,7 @@ export default {
       if ((files.length || hasWorkflows) && !conv.agentsWatched) {
         conv.agentsWatched = true;
         conv.watchers.push(
-          ctx.app.fs.watch(absSub, () => {
+          app.fs.watch(absSub, () => {
             for (const a of conv.agents.values()) tailAgent(a, conv);
             scanAgents(conv);
           }),
@@ -1287,7 +1318,7 @@ export default {
     async function scanWorkflows(conv, wfDir) {
       let listing;
       try {
-        listing = await ctx.app.fs.list(wfDir, { meta: true });
+        listing = await app.fs.list(wfDir, { meta: true });
       } catch {
         return;
       }
@@ -1295,7 +1326,7 @@ export default {
       const runDirs = (listing.children || []).filter((c) => c.dir);
       if (runDirs.length && !conv.wfWatched) {
         conv.wfWatched = true;
-        conv.watchers.push(ctx.app.fs.watch(absWf, () => scanWorkflows(conv, wfDir)));
+        conv.watchers.push(app.fs.watch(absWf, () => scanWorkflows(conv, wfDir)));
       }
       for (const rd of runDirs) {
         const runAbs = `${absWf}/${rd.name}`;
@@ -1303,7 +1334,7 @@ export default {
           conv.wfRunWatched.add(rd.name);
           appendRow(conv, el("div", "cg-row cg-wf-group", `▷ workflow ${rd.name.slice(0, 8)}`));
           conv.watchers.push(
-            ctx.app.fs.watch(runAbs, () => {
+            app.fs.watch(runAbs, () => {
               for (const a of conv.agents.values())
                 if (a.run === rd.name) tailAgent(a, conv);
               scanRunAgents(conv, runAbs, rd.name);
@@ -1317,7 +1348,7 @@ export default {
     async function scanRunAgents(conv, runAbs, run) {
       let listing;
       try {
-        listing = await ctx.app.fs.list(runAbs, { meta: true });
+        listing = await app.fs.list(runAbs, { meta: true });
       } catch {
         return;
       }
@@ -1363,7 +1394,7 @@ export default {
       conv.agents.set(key, a);
       // meta.json(agentType/description) — 있을 때만 헤더 교체(추정 금지).
       try {
-        const mt = await ctx.app.fs.readText(`${absDir}/${id}.meta.json`);
+        const mt = await app.fs.readText(`${absDir}/${id}.meta.json`);
         const meta = JSON.parse(mt.text);
         a.meta = meta;
         if (meta.agentType) title.textContent = meta.agentType;
@@ -1459,8 +1490,8 @@ export default {
     // jsonl 이 유일하게 신뢰할 수 있는 "지금 이 팬의 세션" 신호다(pickActiveSession 참조).
 
     async function openConversation(p) {
-      if (!ctx.app.fs || !ctx.app.fs.readText) {
-        emptyState(p, '코어 fs 소켓 없음 — "fs:read" 권한을 재동의하세요.');
+      if (!app.fs || !app.fs.readText) {
+        emptyState(p, t("empty.no-fs"));
         return;
       }
       const conv = {
@@ -1501,7 +1532,7 @@ export default {
         /* 디렉토리 미존재 가능 */
       }
       if (!root) {
-        emptyState(p, "프로젝트 트랜스크립트 디렉토리를 찾지 못함.\n" + projectDir(p.cwd));
+        emptyState(p, t("empty.no-dir", projectDir(p.cwd)));
         return;
       }
       conv.dir = root;
@@ -1517,11 +1548,11 @@ export default {
           conv.bodyEl.scrollTop = conv.bodyEl.scrollHeight;
         } else {
           // 세션은 시작됐지만 아직 턴 없음(트랜스크립트 미생성) → 대기. watch 가 잡는다.
-          emptyState(p, "현재 세션 " + sid.slice(0, 8) + " — 대화가 오가면 표시됩니다.");
+          emptyState(p, t("empty.session-wait", sid.slice(0, 8)));
         }
       } else {
         // 아직 이 dir 에 트랜스크립트 jsonl 이 없음 → 대기. watch 가 첫 등장을 잡는다.
-        emptyState(p, "현재 claude 세션을 찾지 못함 — 대화가 시작되면 표시됩니다.");
+        emptyState(p, t("empty.no-session"));
       }
       // 라이브 watch(폴링 없음). 현재 세션 파일 등장/갱신·세션 교체를 잡는다.
       conv.watchers.push(
@@ -1633,20 +1664,51 @@ export default {
 
     // ── 코어 범용 소켓 구독(폴링 없음) ───────────────────────────────────────────
     ctx.subscriptions.push(
-      ctx.app.events.on("command.started", ({ paneId, commandLine, cwd }) => {
+      app.events.on("command.started", ({ paneId, commandLine, cwd }) => {
         if (CLAUDE_RE.test(commandLine)) ensure(paneId, cwd, true);
       }),
     );
     ctx.subscriptions.push(
-      ctx.app.events.on("command.finished", ({ paneId }) => {
+      app.events.on("command.finished", ({ paneId }) => {
         if (panes.has(paneId)) remove(paneId);
+      }),
+    );
+    // locale 변경 시 열려 있는 오버레이의 동적 문자열 갱신.
+    ctx.subscriptions.push(
+      app.events.on("locale.changed", () => {
+        for (const [paneId, p] of panes) {
+          if (!p.open || !p.overlay) continue;
+          // verbose 버튼·닫기 버튼 title — 열린 오버레이 DOM 에서 직접 갱신.
+          const vbtn = p.overlay.querySelector(".cg-vbtn");
+          if (vbtn) vbtn.title = t("verbose.title");
+          const xbtn = p.overlay.querySelector(".cg-x");
+          if (xbtn) xbtn.title = t("close.title");
+          const sbtn = p.overlay.querySelector(".cg-send");
+          if (sbtn) sbtn.title = t("send.title");
+          const ta = p.overlay.querySelector(".cg-input");
+          if (ta) {
+            const term = app.terminal;
+            const canWrite = !!(term && term.sendText);
+            ta.placeholder = canWrite ? t("input.placeholder") : t("input.no-perm");
+          }
+          // pending 인디케이터가 표시 중이면 텍스트 갱신.
+          if (p.conv && p.conv.pendingEl) {
+            const span = p.conv.pendingEl.querySelector("span:not(.cg-pending-dot)");
+            if (span) span.textContent = t("pending");
+          }
+          // 큐 배지는 다음 renderQueue 호출 시 t() 를 새로 읽으므로 큐가 활성이면 재렌더.
+          if (p.queue) {
+            const qbox = p.overlay.querySelector(".cg-queue");
+            if (qbox) renderQueue(qbox, p.queue.snapshot());
+          }
+        }
       }),
     );
 
     // claude 가 이미 떠 있는 패널에서 늦게 활성화되면 started 를 놓친다 — 현재 상태 스냅샷으로
     // 즉시 동기화(설정 즉시 반영, 폴링 아님).
-    if (ctx.app.terminal) {
-      for (const c of ctx.app.terminal.runningCommands()) {
+    if (app.terminal) {
+      for (const c of app.terminal.runningCommands()) {
         if (CLAUDE_RE.test(c.commandLine)) ensure(c.paneId, c.cwd, false);
       }
     }
@@ -1655,7 +1717,7 @@ export default {
     const pick = (p) => (p && p.paneId) || lastPaneId;
     const reg = (n, description, triggers, params, h) =>
       ctx.subscriptions.push(
-        ctx.app.commands.register(n, { description, triggers, params, handler: h }),
+        app.commands.register(n, { description, triggers, params, handler: h }),
       );
     const PANE_PARAM = {
       paneId: { type: "string", description: "대상 패널 id(생략 = 최근 claude 패널)" },
