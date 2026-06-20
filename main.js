@@ -1653,32 +1653,52 @@ export default {
 
     // ── 명령 contributes ───────────────────────────────────────────────────────
     const pick = (p) => (p && p.paneId) || lastPaneId;
-    const reg = (n, params, h) =>
+    const reg = (n, description, triggers, params, h) =>
       ctx.subscriptions.push(
-        ctx.app.commands.register(n, { description: n, params, handler: h }),
+        ctx.app.commands.register(n, { description, triggers, params, handler: h }),
       );
     const PANE_PARAM = {
       paneId: { type: "string", description: "대상 패널 id(생략 = 최근 claude 패널)" },
     };
-    reg("toggle", PANE_PARAM, (p) => {
-      const id = pick(p);
-      if (id) toggle(id);
-      return { paneId: id ?? null };
-    });
-    reg("open", PANE_PARAM, (p) => {
-      const id = pick(p);
-      if (id) open(id);
-      return { paneId: id ?? null, open: !!id };
-    });
-    reg("close", PANE_PARAM, (p) => {
-      const id = pick(p);
-      if (id) close(id);
-      return { paneId: id ?? null, open: false };
-    });
+    reg(
+      "toggle",
+      "Toggle the Claude GUI overlay on the active pane. Use when switching between TUI and GUI view.",
+      { ko: "GUI 열기 닫기 전환 오버레이" },
+      PANE_PARAM,
+      (p) => {
+        const id = pick(p);
+        if (id) toggle(id);
+        return { paneId: id ?? null };
+      },
+    );
+    reg(
+      "open",
+      "Open the Claude GUI overlay on the active pane. Use when the GUI is closed and needs to be shown.",
+      { ko: "GUI 오버레이 열기 표시" },
+      PANE_PARAM,
+      (p) => {
+        const id = pick(p);
+        if (id) open(id);
+        return { paneId: id ?? null, open: !!id };
+      },
+    );
+    reg(
+      "close",
+      "Close the Claude GUI overlay on the active pane. Use when dismissing the GUI to return to the terminal.",
+      { ko: "GUI 오버레이 닫기 숨기기" },
+      PANE_PARAM,
+      (p) => {
+        const id = pick(p);
+        if (id) close(id);
+        return { paneId: id ?? null, open: false };
+      },
+    );
     // 입력 + 즉시 상태 반환(선배 요청). 비동기 — return 은 enqueue 직후 상태(held/다이얼로그
     // 대기/awaiting), 최종 "실제 입력(L3)"은 queue 명령으로 폴링. GUI 미오픈이면 자동 open.
     reg(
       "send",
+      "Enqueue text for delivery to claude via the 3-layer verified queue. Opens the GUI if closed. Returns immediate queue state; poll with queue command for L3 confirmation.",
+      { ko: "claude 입력 전송 메시지 보내기 큐" },
       {
         ...PANE_PARAM,
         text: { type: "string", description: "claude 에 보낼 텍스트", required: true },
@@ -1703,19 +1723,27 @@ export default {
       },
     );
     // GUI 로 화면 이동 = 오버레이 열고 입력창(textarea)에 포커스. 사용자가 GUI 입력으로 가는 동작.
-    reg("focus", PANE_PARAM, (params) => {
-      const id = pick(params);
-      if (!id) return { paneId: null, error: "claude 패널 없음" };
-      if (!panes.get(id)?.open) open(id);
-      const p = panes.get(id);
-      if (!p || !p.ta) return { paneId: id, error: "입력창 없음" };
-      p.ta.focus();
-      return { paneId: id, open: !!p.open, focused: document.activeElement === p.ta };
-    });
+    reg(
+      "focus",
+      "Open the Claude GUI overlay and move keyboard focus to the input textarea. Use when directing the user to type in the GUI.",
+      { ko: "GUI 입력창 포커스 이동" },
+      PANE_PARAM,
+      (params) => {
+        const id = pick(params);
+        if (!id) return { paneId: null, error: "claude 패널 없음" };
+        if (!panes.get(id)?.open) open(id);
+        const p = panes.get(id);
+        if (!p || !p.ta) return { paneId: id, error: "입력창 없음" };
+        p.ta.focus();
+        return { paneId: id, open: !!p.open, focused: document.activeElement === p.ta };
+      },
+    );
     // 입력창에 실제 입력 = textarea 에 값 넣고 진짜 Enter keydown 을 디스패치 → GUI 의 send
     // 핸들러(ta.value 읽어 큐 enqueue)를 그대로 실행. 우회 없이 textarea→Enter→큐 글루를 탄다.
     reg(
       "type",
+      "Set text in the GUI input textarea and dispatch Enter to trigger the send handler. Drives the textarea→Enter→queue path without bypassing it.",
+      { ko: "GUI 입력창 타이핑 텍스트 입력" },
       { ...PANE_PARAM, text: { type: "string", description: "입력창에 칠 텍스트", required: true } },
       (params) => {
         const id = pick(params);
@@ -1735,32 +1763,44 @@ export default {
       },
     );
     // 현재 큐 스냅샷(비동기 진행 폴링용). 각 항목 {text,state,reason}.
-    reg("queue", PANE_PARAM, (params) => {
-      const id = pick(params);
-      const p = id ? panes.get(id) : null;
-      return { paneId: id ?? null, queue: p && p.queue ? p.queue.snapshot() : [] };
-    });
+    reg(
+      "queue",
+      "Return a snapshot of the pending input queue. Use to poll async send progress until L3 confirmation removes each item.",
+      { ko: "입력 큐 상태 조회 대기 항목" },
+      PANE_PARAM,
+      (params) => {
+        const id = pick(params);
+        const p = id ? panes.get(id) : null;
+        return { paneId: id ?? null, queue: p && p.queue ? p.queue.snapshot() : [] };
+      },
+    );
     // 오버레이 렌더 상태 introspection(e2e 결정적 단언용). DOM 을 소켓이 못 보므로 플러그인이 노출.
-    reg("state", PANE_PARAM, (params) => {
-      const id = pick(params);
-      const p = id ? panes.get(id) : null;
-      if (!p) return { paneId: id ?? null, open: false };
-      const term = ctx.app.terminal;
-      return {
-        paneId: id,
-        open: !!p.open,
-        session: p.conv ? p.conv.session : null,
-        dir: p.conv ? p.conv.dir : null, // 추적 중인 프로젝트 트랜스크립트 dir(테스트 오라클용)
-        bubbles: p.bodyEl ? p.bodyEl.querySelectorAll(".cg-row").length : 0,
-        agents: p.bodyEl ? p.bodyEl.querySelectorAll(".cg-subagent").length : 0,
-        pending: !!(p.conv && p.conv.pendingEl),
-        queue: p.queue ? p.queue.snapshot() : [],
-        classify:
-          term && term.readBuffer
-            ? classifyBuffer(term.readBuffer(id, 60) || "")
-            : "unknown",
-      };
-    });
+    reg(
+      "state",
+      "Return overlay render state for deterministic E2E assertions: open flag, session id, bubble count, agent count, pending indicator, queue snapshot, and buffer classify.",
+      { ko: "GUI 상태 조회 오버레이 렌더 확인" },
+      PANE_PARAM,
+      (params) => {
+        const id = pick(params);
+        const p = id ? panes.get(id) : null;
+        if (!p) return { paneId: id ?? null, open: false };
+        const term = ctx.app.terminal;
+        return {
+          paneId: id,
+          open: !!p.open,
+          session: p.conv ? p.conv.session : null,
+          dir: p.conv ? p.conv.dir : null, // 추적 중인 프로젝트 트랜스크립트 dir(테스트 오라클용)
+          bubbles: p.bodyEl ? p.bodyEl.querySelectorAll(".cg-row").length : 0,
+          agents: p.bodyEl ? p.bodyEl.querySelectorAll(".cg-subagent").length : 0,
+          pending: !!(p.conv && p.conv.pendingEl),
+          queue: p.queue ? p.queue.snapshot() : [],
+          classify:
+            term && term.readBuffer
+              ? classifyBuffer(term.readBuffer(id, 60) || "")
+              : "unknown",
+        };
+      },
+    );
 
     ctx.subscriptions.push({
       dispose() {
