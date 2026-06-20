@@ -1417,7 +1417,7 @@ export default {
 
     async function tailAgent(a, conv) {
       try {
-        const r = await ctx.app.fs.readText(a.path, a.offset);
+        const r = await app.fs.readText(a.path, a.offset);
         if (!r.text || r.totalBytes < a.offset) {
           a.offset = Math.min(a.offset, r.totalBytes);
           return;
@@ -1477,7 +1477,7 @@ export default {
     // since(unix 초) 지정 시 그 이후 수정된 .jsonl 만 후보(현재 claude 세션). 0 이면 전체.
     // root 는 세션이 없어도 반환(빈 디렉토리도 watch 걸어 첫 세션 등장을 잡기 위함).
     async function findActive(dir, since) {
-      const listing = await ctx.app.fs.list(dir, { meta: true });
+      const listing = await app.fs.list(dir, { meta: true });
       return {
         root: listing.root,
         session: pickActiveSession(listing.children, since),
@@ -1518,7 +1518,7 @@ export default {
       p.conv = conv;
       // effort 는 settings.json 에서(범용 fs 로 ~ 확장).
       try {
-        const s = await ctx.app.fs.readText("~/.claude/settings.json");
+        const s = await app.fs.readText("~/.claude/settings.json");
         const j = JSON.parse(s.text);
         if (j.effortLevel) conv.stats.effort = j.effortLevel;
       } catch {
@@ -1527,7 +1527,7 @@ export default {
       // 디렉토리(절대 canonical) 확보 — 세션이 없어도 watch 를 걸기 위해.
       let root = null;
       try {
-        root = (await ctx.app.fs.list(projectDir(p.cwd), { meta: true })).root;
+        root = (await app.fs.list(projectDir(p.cwd), { meta: true })).root;
       } catch {
         /* 디렉토리 미존재 가능 */
       }
@@ -1541,7 +1541,7 @@ export default {
       const sid = (await findActive(conv.dir, conv.detectAt)).session;
       if (sid) {
         switchToSession(conv, sid); // 현재 세션 타깃(본문 비움 + path 설정)
-        const first = await ctx.app.fs.readText(conv.path, 0).catch(() => null);
+        const first = await app.fs.readText(conv.path, 0).catch(() => null);
         if (first && first.totalBytes) {
           conv.offset = first.totalBytes;
           feedInitial(conv, first.text);
@@ -1556,7 +1556,7 @@ export default {
       }
       // 라이브 watch(폴링 없음). 현재 세션 파일 등장/갱신·세션 교체를 잡는다.
       conv.watchers.push(
-        ctx.app.fs.watch(conv.dir, async () => {
+        app.fs.watch(conv.dir, async () => {
           // dir 변경(resumed/신규 세션 jsonl append)마다 활성 세션 재확인 → 바뀌면 전환.
           const cur = (await findActive(conv.dir, conv.detectAt)).session;
           if (cur && cur !== conv.session) switchToSession(conv, cur); // 교체/첫 등장
@@ -1776,7 +1776,7 @@ export default {
         const q = panes.get(id)?.queue;
         if (!q) return { paneId: id, error: "큐 생성 실패(terminal:write 필요)" };
         q.enqueue(text);
-        const term = ctx.app.terminal;
+        const term = app.terminal;
         const cls =
           term && term.readBuffer
             ? classifyBuffer(term.readBuffer(id, 60) || "")
@@ -1846,7 +1846,7 @@ export default {
         const id = pick(params);
         const p = id ? panes.get(id) : null;
         if (!p) return { paneId: id ?? null, open: false };
-        const term = ctx.app.terminal;
+        const term = app.terminal;
         return {
           paneId: id,
           open: !!p.open,
