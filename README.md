@@ -30,11 +30,11 @@ Modal gate (detects dialogs via `readBuffer` dismiss hints such as `Esc to cance
 - `queue [paneId]` — Snapshot the current input queue (for progress polling)
 
 ```bash
-sok plugin.soksak-plugin-claude-gui.send '{"text":"hello"}'
+sok plugin.soksak-plugin-agent-claude-gui.send '{"text":"hello"}'
 # → { "classify":"modal", "queue":[{"text":"hello","state":"held","reason":"modal"}] }
-sok plugin.soksak-plugin-claude-gui.focus      # move to GUI input field
-sok plugin.soksak-plugin-claude-gui.type '{"text":"hello"}'   # type + Enter in input field
-sok plugin.soksak-plugin-claude-gui.queue
+sok plugin.soksak-plugin-agent-claude-gui.focus      # move to GUI input field
+sok plugin.soksak-plugin-agent-claude-gui.type '{"text":"hello"}'   # type + Enter in input field
+sok plugin.soksak-plugin-agent-claude-gui.queue
 ```
 
 Queue chip states: `⧖ dialog wait` (front item blocked by dialog) · `⧖ queued (N)` (subsequent items) · `⤴ sending` (injecting) · `⏳ awaiting input` (waiting for L3 in claude queue). Chip disappears = actual input confirmed (L3).

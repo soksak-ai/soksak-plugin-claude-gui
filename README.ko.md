@@ -30,11 +30,11 @@ GUI 입력은 claude PTY 로 주입되는데, claude 가 **다이얼로그(/stat
 - `queue [paneId]` — 현재 입력 큐 스냅샷 조회(진행 폴링용)
 
 ```bash
-sok plugin.soksak-plugin-claude-gui.send '{"text":"안녕"}'
+sok plugin.soksak-plugin-agent-claude-gui.send '{"text":"안녕"}'
 # → { "classify":"modal", "queue":[{"text":"안녕","state":"held","reason":"modal"}] }
-sok plugin.soksak-plugin-claude-gui.focus      # GUI 입력창으로 화면 이동
-sok plugin.soksak-plugin-claude-gui.type '{"text":"안녕"}'   # 입력창에 실제 타이핑+Enter
-sok plugin.soksak-plugin-claude-gui.queue
+sok plugin.soksak-plugin-agent-claude-gui.focus      # GUI 입력창으로 화면 이동
+sok plugin.soksak-plugin-agent-claude-gui.type '{"text":"안녕"}'   # 입력창에 실제 타이핑+Enter
+sok plugin.soksak-plugin-agent-claude-gui.queue
 ```
 
 큐 칩 상태: `⧖ 다이얼로그 대기`(맨 앞이 다이얼로그로 막힘) · `⧖ 순번 대기 (N)`(뒤 항목) · `⤴ 전송`(주입중) · `⏳ 입력 대기`(claude 큐에서 L3 대기). 칩이 사라지는 시점 = 실제 입력 시점(L3).

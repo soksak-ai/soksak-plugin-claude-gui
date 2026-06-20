@@ -1,4 +1,4 @@
-// @ts-nocheck — vanilla 플러그인(plugins/soksak-plugin-claude-gui/main.js) 순수 로직 단위테스트.
+// @ts-nocheck — vanilla 플러그인(plugins/soksak-plugin-agent-claude-gui/main.js) 순수 로직 단위테스트.
 // 규칙: 비자명 로직은 순수함수로 분리(named export) → RED→구현→GREEN. tsc 건너뜀, vitest 실행.
 //
 // 대상:
