@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "doctor": "soksak-plugin-doctor",
+    "prepublishOnly": "npm run doctor"
   },
   "devDependencies": {
-    "vitest": "^4"
+    "vitest": "^4",
+    "soksak-plugin-doctor": "github:soksak-ai/soksak-plugin-doctor"
   }
 }
