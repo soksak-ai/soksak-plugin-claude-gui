@@ -12,7 +12,22 @@ import {
   diffLines,
   toolResultSummary,
   parseCommandTags,
+  isSystemInjection,
 } from "./main.js";
+
+describe("isSystemInjection (harness 주입 — claude 와의 대화가 아님, 숨김 대상)", () => {
+  it("task-notification·system-reminder 로 시작하면 true", () => {
+    expect(isSystemInjection("<task-notification>\n<task-id>x</task-id>")).toBe(true);
+    expect(isSystemInjection("<system-reminder>foo</system-reminder>")).toBe(true);
+  });
+  it("슬래시 명령·일반 대화·임의 <태그> 는 false(대화/명령은 유지)", () => {
+    expect(isSystemInjection("<command-name>/clear</command-name>")).toBe(false);
+    expect(isSystemInjection("안녕하세요")).toBe(false);
+    expect(isSystemInjection("<example>코드</example>")).toBe(false);
+    expect(isSystemInjection("")).toBe(false);
+    expect(isSystemInjection(null)).toBe(false);
+  });
+});
 
 describe("parseCommandTags (슬래시 명령 transcript 태그 파싱)", () => {
   it("command-name 을 슬래시 명령으로 추출(이름 정규화)", () => {

@@ -279,6 +279,14 @@ export function parseCommandTags(text) {
   return null;
 }
 
+// harness 가 주입하는 시스템 메시지(워크플로 완료 알림·시스템 리마인더 등)는 claude 와의 대화가
+// 아니므로 버블에서 숨긴다. 슬래시 명령(<command-*>)·일반 대화·임의 <태그> 는 대상 아님(false).
+export function isSystemInjection(text) {
+  return /^\s*<(task-notification|system-reminder)[\s>]/.test(
+    String(text == null ? "" : text),
+  );
+}
+
 export default {
   activate(ctx) {
     const app = ctx.app;
@@ -1027,6 +1035,9 @@ export default {
     }
 
     function userBubble(text, uid) {
+      // harness 주입 시스템 메시지(워크플로 완료 알림·시스템 리마인더)는 claude 와의 대화가 아니므로
+      // 버블을 만들지 않는다(raw XML 노이즈 제거).
+      if (isSystemInjection(text)) return null;
       // 슬래시 명령(<command-*>)·명령 출력(<local-command-stdout>)은 raw 태그 대신 깔끔하게.
       const cmd = parseCommandTags(text);
       if (cmd) {
@@ -1463,12 +1474,9 @@ export default {
             a.listEl.appendChild(d);
           }
         }
-      } else if (entry.type === "user" && typeof m.content === "string" && m.content.trim()) {
-        const d = el("div", "cg-sub-line cg-dim");
-        d.textContent =
-          m.content.length > 200 ? m.content.slice(0, 200) + "…" : m.content;
-        a.listEl.appendChild(d);
       }
+      // 서브에이전트에게 준 prompt(user 메시지)는 표시하지 않는다 — 사용자는 agent 의 응답(assistant)·
+      // 도구 사용만 보면 된다. prompt 전문은 노이즈다.
     }
 
     // ── 활성 세션 찾기 + 대화 열기 ─────────────────────────────────────────────
