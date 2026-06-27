@@ -323,13 +323,10 @@ export default {
     // 마지막 N 개 메시지만 DOM 으로(터미널 스크롤백처럼) — 거대 세션의 DOM 폭주 방지.
     const RENDER_CAP = 300;
 
-    // 플러그인 자체 스타일 1회 주입(테마 토큰 사용 — 코어 CSS 헌법 영역 아님, 플러그인 소유).
-    const STYLE_ID = "soksak-claude-gui-style";
+    // 플러그인 자체 스타일 주입(테마 토큰 사용 — 코어 CSS 헌법 영역 아님, 플러그인 소유). 코어가
+    // head 를 소유하고 멱등 관리한다(전역 document.head 직접 접근 대체 — 중복 가드도 코어가 흡수).
     function injectStyle() {
-      if (document.getElementById(STYLE_ID)) return;
-      const s = document.createElement("style");
-      s.id = STYLE_ID;
-      s.textContent = `
+      app.ui.injectStyle(`
 .cg-overlay{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;
   background:var(--bg,#0d1117);color:var(--fg,#e6e6e6);overflow:hidden;
   user-select:text;-webkit-user-select:text}
@@ -448,8 +445,7 @@ export default {
 /* ③ 에이전트/워크플로 진행. */
 .cg-agent-prog{font-weight:400;opacity:.6;font-size:11px;margin-left:auto}
 .cg-wf-group{font-size:11px;opacity:.55;margin:8px 0 2px;font-weight:600}
-`;
-      document.head.appendChild(s);
+`);
     }
     injectStyle();
 
@@ -577,27 +573,10 @@ export default {
       return e;
     };
 
-    // 클립보드 복사(보안 컨텍스트면 clipboard API, 아니면 execCommand 폴백).
+    // 클립보드 복사 — 코어 클립보드(OS 네이티브). navigator.clipboard·임시 textarea 폴백(전역
+    // document.body 접근)을 코어가 흡수한다. fire-and-forget(기존과 동일, 실패는 무시).
     function copyText(t) {
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(t);
-          return;
-        }
-      } catch {
-        /* 폴백 */
-      }
-      const ta = document.createElement("textarea");
-      ta.value = t;
-      ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-      } catch {
-        /* 무시 */
-      }
-      ta.remove();
+      void app.clipboard.writeText(t).catch(() => {});
     }
 
     // ── cwd → 트랜스크립트 디렉토리(cc2 sanitizePath: 영숫자 외 전부 '-') ───────────
@@ -1636,10 +1615,10 @@ export default {
     function close(paneId) {
       const p = panes.get(paneId);
       if (!p || !p.open) return;
-      // 죽을 오버레이 DOM 에 포커스가 남으면 다음 클릭이 안 가므로 먼저 푼다(D.3).
-      if (p.overlay && p.overlay.contains(document.activeElement)) {
-        document.activeElement.blur();
-      }
+      // 죽을 오버레이 DOM 에 포커스가 남으면 다음 클릭이 안 가므로 먼저 푼다(D.3). 자기 오버레이
+      // 하위의 포커스 요소를 element :focus 로 찾는다(전역 document.activeElement 대신 — 자기 영역).
+      const focused = p.overlay && p.overlay.querySelector(":focus");
+      if (focused) focused.blur();
       // 닫아도 대기 항목 보존(pane 레벨) — 재오픈 시 restore. TUI 갔다 와도 안 사라짐.
       if (p.queue && p.queue.hasPending()) p.savedQueue = p.queue.snapshot();
       p.queue?.dispose(); // onOutput 구독·타이머 해지(항목은 savedQueue 로 보존)
@@ -1796,7 +1775,7 @@ export default {
         const p = panes.get(id);
         if (!p || !p.ta) return { paneId: id, error: "입력창 없음" };
         p.ta.focus();
-        return { paneId: id, open: !!p.open, focused: document.activeElement === p.ta };
+        return { paneId: id, open: !!p.open, focused: p.ta.matches(":focus") };
       },
     );
     // 입력창에 실제 입력 = textarea 에 값 넣고 진짜 Enter keydown 을 디스패치 → GUI 의 send

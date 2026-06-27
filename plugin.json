@@ -7,7 +7,7 @@
   "description": { "en": "When claude (Claude Code CLI) runs in a terminal, a GUI entry appears in the panel statusbar; clicking it opens a bubble-UI overlay showing the conversation and active subagents in real time.", "ko": "터미널에서 claude(Claude Code CLI)가 실행되면 패널 상태바에 GUI 항목이 뜨고, 누르면 대화를 버블 UI로 보여주는 오버레이가 열린다. 활성 세션과 서브에이전트를 실시간 표시." },
   "entry": "main.js",
   "dependencies": { "soksak-plugin-terminal": ">=0.1.0" },
-  "permissions": ["ui", "ui:statusbar", "ui:overlay:pane", "commands", "terminal", "terminal:read", "terminal:write", "fs:read"],
+  "permissions": ["ui", "ui:statusbar", "ui:overlay:pane", "commands", "terminal", "terminal:read", "terminal:write", "fs:read", "clipboard:write"],
   "contributes": {
     "commands": [
       { "name": "toggle", "title": { "en": "Toggle Claude GUI", "ko": "Claude GUI 켜기/끄기" } },
