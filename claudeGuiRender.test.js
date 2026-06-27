@@ -13,6 +13,7 @@ import {
   toolResultSummary,
   parseCommandTags,
   isSystemInjection,
+  hasAnswerContent,
 } from "./main.js";
 
 describe("isSystemInjection (harness 주입 — claude 와의 대화가 아님, 숨김 대상)", () => {
@@ -26,6 +27,22 @@ describe("isSystemInjection (harness 주입 — claude 와의 대화가 아님, 
     expect(isSystemInjection("<example>코드</example>")).toBe(false);
     expect(isSystemInjection("")).toBe(false);
     expect(isSystemInjection(null)).toBe(false);
+  });
+});
+
+describe("hasAnswerContent (thinking-only 어시스턴트는 아직 답이 아님 → 답변중 유지)", () => {
+  const a = (content) => ({ type: "assistant", message: { content } });
+  it("text·tool_use 가 있으면 true(실제 답·도구 사용)", () => {
+    expect(hasAnswerContent(a([{ type: "text", text: "hi" }]))).toBe(true);
+    expect(hasAnswerContent(a([{ type: "tool_use", name: "Bash" }]))).toBe(true);
+    expect(
+      hasAnswerContent(a([{ type: "thinking", thinking: "음" }, { type: "text", text: "답" }])),
+    ).toBe(true);
+  });
+  it("thinking 만 있으면 false(아직 답 아님 → 답변중 유지)", () => {
+    expect(hasAnswerContent(a([{ type: "thinking", thinking: "음" }]))).toBe(false);
+    expect(hasAnswerContent(a([{ type: "redacted_thinking" }]))).toBe(false);
+    expect(hasAnswerContent(a([]))).toBe(false);
   });
 });
 

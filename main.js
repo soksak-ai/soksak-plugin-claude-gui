@@ -287,6 +287,14 @@ export function isSystemInjection(text) {
   );
 }
 
+// 어시스턴트 라인에 실제 답(text)·도구 사용(tool_use)이 있는지. thinking/redacted_thinking 만
+// 있으면 아직 답이 아니다(thinking 은 기본 숨김) — "답변 중" 인디케이터를 유지해야 한다.
+export function hasAnswerContent(entry) {
+  const c = entry && entry.message && entry.message.content;
+  if (!Array.isArray(c)) return !!c;
+  return c.some((b) => b && (b.type === "text" || b.type === "tool_use"));
+}
+
 export default {
   activate(ctx) {
     const app = ctx.app;
@@ -989,8 +997,10 @@ export default {
         }
         showPendingIndicator(conv); // user 라인 = claude 가 응답 시작 → "답변 중" 표시
       }
-      // 어시스턴트 라인 도착 = 응답 시작 → "답변 중" 인디케이터 제거.
-      if (entry.type === "assistant") removePendingIndicator(conv);
+      // 어시스턴트 라인에 실제 답(text)·도구가 도착하면 "답변 중" 제거. thinking-only 라인은 아직
+      // 답이 아니므로(thinking 은 기본 숨김) 인디케이터를 유지한다 — 안 그러면 thinking 동안 화면이 빈다.
+      if (entry.type === "assistant" && hasAnswerContent(entry))
+        removePendingIndicator(conv);
     }
 
     function appendRow(conv, node) {
