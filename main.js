@@ -320,13 +320,20 @@ export default {
       '-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",system-ui,sans-serif';
     const MONO =
       'ui-monospace,SFMono-Regular,"JetBrains Mono","SF Mono",Menlo,monospace';
+    const cssEsc = (s) =>
+      window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\\]]/g, "\\$&");
+    const paneEl = (paneId) =>
+      document.querySelector(`[data-pane-id="${cssEsc(paneId)}"]`);
     // 마지막 N 개 메시지만 DOM 으로(터미널 스크롤백처럼) — 거대 세션의 DOM 폭주 방지.
     const RENDER_CAP = 300;
 
-    // 플러그인 자체 스타일 주입(테마 토큰 사용 — 코어 CSS 헌법 영역 아님, 플러그인 소유). 코어가
-    // head 를 소유하고 멱등 관리한다(전역 document.head 직접 접근 대체 — 중복 가드도 코어가 흡수).
+    // 플러그인 자체 스타일 1회 주입(테마 토큰 사용 — 코어 CSS 헌법 영역 아님, 플러그인 소유).
+    const STYLE_ID = "soksak-claude-gui-style";
     function injectStyle() {
-      app.ui.injectStyle(`
+      if (document.getElementById(STYLE_ID)) return;
+      const s = document.createElement("style");
+      s.id = STYLE_ID;
+      s.textContent = `
 .cg-overlay{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;
   background:var(--bg,#0d1117);color:var(--fg,#e6e6e6);overflow:hidden;
   user-select:text;-webkit-user-select:text}
@@ -445,7 +452,8 @@ export default {
 /* ③ 에이전트/워크플로 진행. */
 .cg-agent-prog{font-weight:400;opacity:.6;font-size:11px;margin-left:auto}
 .cg-wf-group{font-size:11px;opacity:.55;margin:8px 0 2px;font-weight:600}
-`);
+`;
+      document.head.appendChild(s);
     }
     injectStyle();
 
@@ -573,10 +581,27 @@ export default {
       return e;
     };
 
-    // 클립보드 복사 — 코어 클립보드(OS 네이티브). navigator.clipboard·임시 textarea 폴백(전역
-    // document.body 접근)을 코어가 흡수한다. fire-and-forget(기존과 동일, 실패는 무시).
+    // 클립보드 복사(보안 컨텍스트면 clipboard API, 아니면 execCommand 폴백).
     function copyText(t) {
-      void app.clipboard.writeText(t).catch(() => {});
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t);
+          return;
+        }
+      } catch {
+        /* 폴백 */
+      }
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch {
+        /* 무시 */
+      }
+      ta.remove();
     }
 
     // ── cwd → 트랜스크립트 디렉토리(cc2 sanitizePath: 영숫자 외 전부 '-') ───────────
@@ -1579,6 +1604,8 @@ export default {
     function open(paneId) {
       const p = panes.get(paneId);
       if (!p || p.open) return;
+      const host = paneEl(paneId);
+      if (!host) return;
       const ov = el("div", "cg-overlay");
       ov.style.font = "13px/1.5 " + UI_FONT;
       const body = el("div", "cg-body");
@@ -1594,10 +1621,7 @@ export default {
         p.savedQueue = null;
       }
       ov.append(head, body, foot);
-      // 코어가 paneId → host lookup 을 대행한다(전역 document 로 코어 DOM 을 만지지 않는다). 오버레이는
-      // provider 가 비우지 않는 안전 슬롯(.plugin-view-host)에 붙고, host 부재 시 throw(침묵 실패 금지 —
-      // 과거 회귀의 root cause 가 바로 host 못 찾고 조용히 멈춘 것).
-      p.overlayHandle = app.ui.mountPaneOverlay(paneId, ov);
+      host.appendChild(ov);
       p.overlay = ov;
       p.open = true;
       // 열리면 입력창에 포커스(바로 타이핑).
@@ -1615,18 +1639,16 @@ export default {
     function close(paneId) {
       const p = panes.get(paneId);
       if (!p || !p.open) return;
-      // 죽을 오버레이 DOM 에 포커스가 남으면 다음 클릭이 안 가므로 먼저 푼다(D.3). 자기 오버레이
-      // 하위의 포커스 요소를 element :focus 로 찾는다(전역 document.activeElement 대신 — 자기 영역).
-      const focused = p.overlay && p.overlay.querySelector(":focus");
-      if (focused) focused.blur();
+      // 죽을 오버레이 DOM 에 포커스가 남으면 다음 클릭이 안 가므로 먼저 푼다(D.3).
+      if (p.overlay && p.overlay.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       // 닫아도 대기 항목 보존(pane 레벨) — 재오픈 시 restore. TUI 갔다 와도 안 사라짐.
       if (p.queue && p.queue.hasPending()) p.savedQueue = p.queue.snapshot();
       p.queue?.dispose(); // onOutput 구독·타이머 해지(항목은 savedQueue 로 보존)
       p.queue = null;
       teardownConv(p);
-      // 코어가 마운트한 오버레이를 핸들로 해지(직접 remove 금지 — 마운트/해지 대칭은 코어 소유).
-      p.overlayHandle?.dispose();
-      p.overlayHandle = null;
+      p.overlay?.remove();
       p.overlay = null;
       p.bodyEl = null;
       p.open = false;
@@ -1775,7 +1797,7 @@ export default {
         const p = panes.get(id);
         if (!p || !p.ta) return { paneId: id, error: "입력창 없음" };
         p.ta.focus();
-        return { paneId: id, open: !!p.open, focused: p.ta.matches(":focus") };
+        return { paneId: id, open: !!p.open, focused: document.activeElement === p.ta };
       },
     );
     // 입력창에 실제 입력 = textarea 에 값 넣고 진짜 Enter keydown 을 디스패치 → GUI 의 send
