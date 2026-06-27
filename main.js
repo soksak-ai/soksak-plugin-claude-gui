@@ -320,10 +320,6 @@ export default {
       '-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",system-ui,sans-serif';
     const MONO =
       'ui-monospace,SFMono-Regular,"JetBrains Mono","SF Mono",Menlo,monospace';
-    const cssEsc = (s) =>
-      window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\\]]/g, "\\$&");
-    const paneEl = (paneId) =>
-      document.querySelector(`[data-pane-id="${cssEsc(paneId)}"]`);
     // 마지막 N 개 메시지만 DOM 으로(터미널 스크롤백처럼) — 거대 세션의 DOM 폭주 방지.
     const RENDER_CAP = 300;
 
@@ -1604,8 +1600,6 @@ export default {
     function open(paneId) {
       const p = panes.get(paneId);
       if (!p || p.open) return;
-      const host = paneEl(paneId);
-      if (!host) return;
       const ov = el("div", "cg-overlay");
       ov.style.font = "13px/1.5 " + UI_FONT;
       const body = el("div", "cg-body");
@@ -1621,7 +1615,10 @@ export default {
         p.savedQueue = null;
       }
       ov.append(head, body, foot);
-      host.appendChild(ov);
+      // 코어가 paneId → host lookup 을 대행한다(전역 document 로 코어 DOM 을 만지지 않는다). 오버레이는
+      // provider 가 비우지 않는 안전 슬롯(.plugin-view-host)에 붙고, host 부재 시 throw(침묵 실패 금지 —
+      // 과거 회귀의 root cause 가 바로 host 못 찾고 조용히 멈춘 것).
+      p.overlayHandle = app.ui.mountPaneOverlay(paneId, ov);
       p.overlay = ov;
       p.open = true;
       // 열리면 입력창에 포커스(바로 타이핑).
@@ -1648,7 +1645,9 @@ export default {
       p.queue?.dispose(); // onOutput 구독·타이머 해지(항목은 savedQueue 로 보존)
       p.queue = null;
       teardownConv(p);
-      p.overlay?.remove();
+      // 코어가 마운트한 오버레이를 핸들로 해지(직접 remove 금지 — 마운트/해지 대칭은 코어 소유).
+      p.overlayHandle?.dispose();
+      p.overlayHandle = null;
       p.overlay = null;
       p.bodyEl = null;
       p.open = false;
