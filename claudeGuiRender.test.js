@@ -14,6 +14,7 @@ import {
   parseCommandTags,
   isSystemInjection,
   hasAnswerContent,
+  shouldShowPending,
 } from "./main.js";
 
 describe("isSystemInjection (harness 주입 — claude 와의 대화가 아님, 숨김 대상)", () => {
@@ -43,6 +44,26 @@ describe("hasAnswerContent (thinking-only 어시스턴트는 아직 답이 아�
     expect(hasAnswerContent(a([{ type: "thinking", thinking: "음" }]))).toBe(false);
     expect(hasAnswerContent(a([{ type: "redacted_thinking" }]))).toBe(false);
     expect(hasAnswerContent(a([]))).toBe(false);
+  });
+});
+
+describe("shouldShowPending (transcript 마지막 상태 → 답변중 복원: tui↔gui 전환에도 유지)", () => {
+  const u = (text) => ({ type: "user", message: { content: text } });
+  const a = (content) => ({ type: "assistant", message: { content } });
+  const think = a([{ type: "thinking", thinking: "음" }]);
+  const answer = a([{ type: "text", text: "답" }]);
+  it("user 가 마지막 = 응답 대기 → true", () => {
+    expect(shouldShowPending([u("질문")])).toBe(true);
+  });
+  it("thinking-only 가 마지막 = 생성 중(답 전) → true", () => {
+    expect(shouldShowPending([u("질문"), think])).toBe(true);
+  });
+  it("답(text)이 나오면 → false", () => {
+    expect(shouldShowPending([u("질문"), think, answer])).toBe(false);
+    expect(shouldShowPending([u("질문"), answer])).toBe(false);
+  });
+  it("빈 transcript → false", () => {
+    expect(shouldShowPending([])).toBe(false);
   });
 });
 

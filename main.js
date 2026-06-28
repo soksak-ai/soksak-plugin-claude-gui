@@ -295,6 +295,19 @@ export function hasAnswerContent(entry) {
   return c.some((b) => b && (b.type === "text" || b.type === "tool_use"));
 }
 
+// transcript 마지막 상태로 "답변 중" 인디케이터를 복원해야 하는지. user(질문/도구결과) 후 아직 답이
+// 없으면(thinking-only 포함) true. tui↔gui 전환·close/open 으로 재로드해도 라이브 tail 과 같은 결과가
+// 되도록 — feedInitial(과거분)은 renderEntry 의 pending 로직을 안 거치므로 끝에서 이걸로 복원한다.
+export function shouldShowPending(entries) {
+  let pending = false;
+  for (const e of entries || []) {
+    if (!e) continue;
+    if (e.type === "user") pending = true;
+    else if (e.type === "assistant" && hasAnswerContent(e)) pending = false;
+  }
+  return pending;
+}
+
 export default {
   activate(ctx) {
     const app = ctx.app;
@@ -1282,6 +1295,9 @@ export default {
       );
       for (const e of rend.slice(-RENDER_CAP)) renderBubble(conv, e);
       updateHeader(conv);
+      // 마지막 상태가 "답 대기"(user 후 답 없음·thinking-only)면 "답변 중" 복원 — close/open·tui↔gui
+      // 전환으로 재로드해도 유지되도록(feedInitial 은 renderEntry 의 pending 로직을 안 거친다).
+      if (shouldShowPending(rend)) showPendingIndicator(conv);
     }
 
     async function tail(conv) {
